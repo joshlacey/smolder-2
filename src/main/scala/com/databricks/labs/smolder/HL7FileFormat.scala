@@ -81,22 +81,28 @@ class HL7FileFormat extends FileFormat with DataSourceRegister {
       val is = hadoopFs.open(path)
       val lines = Source.fromInputStream(is).getLines().toArray
       is.close()
-
-      // create HL7 iterator to parse message and return rows
-      HL7Iterator(lines.toIterator, requiredSchema)
+      if(options.contains("IncludeMSHInSegments")) {
+        HL7Iterator(lines.toIterator, requiredSchema, true, partitionedFile.filePath)
+      } else {
+        // create HL7 iterator to parse message and return rows
+        HL7Iterator(lines.toIterator, requiredSchema, false, partitionedFile.filePath)
+      }
+      
     }
   }
 }
 
 private case class HL7Iterator(
   lines: Iterator[String],
-  requiredSchema: StructType)
+  requiredSchema: StructType,
+  includeMSHInSegments: Boolean,
+  rawPath: String)
     extends Iterator[InternalRow] {
 
   var accessed = false
 
   // parse the rows in this file entirely
-  val ir = Message(lines).toInternalRow(requiredSchema)
+  val ir = Message(lines, includeMSHInSegments, rawPath).toInternalRow(requiredSchema)
 
   override def hasNext: Boolean = {
     !accessed

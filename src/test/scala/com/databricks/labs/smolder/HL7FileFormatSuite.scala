@@ -78,4 +78,14 @@ class HL7FileFormatSuite extends SmolderBaseTest {
       .selectExpr("explode(fields)")
       .count() === 57)
   }
+
+    test("loading an hl7 message, selecting only the segments ids, when MSH is included in the segments") {
+
+    val file = testFile("single_record.hl7")
+
+    val df = spark.read.format("hl7").option("IncludeMSHInSegments", "true")
+      .load(file)
+
+    assert(df.selectExpr("explode(segments.id)").count() === 4)
+  }
 }

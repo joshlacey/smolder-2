@@ -26,7 +26,7 @@ class MessageSuite extends SmolderBaseTest {
   test("validate schema") {
     val schema = Message.schema
 
-    assert(schema.size === 2)
+    assert(schema.size === 3)
     assert(schema("message").dataType === StringType)
     assert(schema("segments").dataType match {
       case ArrayType(_, false) => true
@@ -46,24 +46,24 @@ class MessageSuite extends SmolderBaseTest {
 
   test("cannot parse an empty iterator") {
     intercept[IllegalArgumentException] {
-      Message(Iterator())
+      Message(Iterator(), false, "")
     }
   }
 
   test("cannot parse an empty string") {
     intercept[IllegalArgumentException] {
-      Message(UTF8String.fromString(""))
+      Message(UTF8String.fromString(""), false, "")
     }
   }
 
   test("passing a null string returns a null message") {
     val nullMessage: UTF8String = null
-    assert(Message(nullMessage) === null)
+    assert(Message(nullMessage, false, "") === null)
   }
 
   test("parse only a message header, by iterator") {
 
-    val message = Message(Iterator(msh))
+    val message = Message(Iterator(msh), false, "")
 
     assert(message.message.toString === msh)
     assert(message.segments.isEmpty)
@@ -71,7 +71,7 @@ class MessageSuite extends SmolderBaseTest {
 
   test("parse only a message header, by string") {
 
-    val message = Message(UTF8String.fromString(msh))
+    val message = Message(UTF8String.fromString(msh), false, "")
 
     assert(message.message.toString === msh)
     assert(message.segments.isEmpty)
@@ -82,7 +82,7 @@ class MessageSuite extends SmolderBaseTest {
     val file = testFile("single_record.hl7")
     val lines = Source.fromFile(file).getLines()
 
-    val message = Message(lines)
+    val message = Message(lines, false, "")
 
     assert(message.message.toString === msh)
 
@@ -106,7 +106,7 @@ class MessageSuite extends SmolderBaseTest {
     val file = testFile("single_record.hl7")
     val lines = Source.fromFile(file).getLines().mkString(delim.toChar.toString)
 
-    val message = Message(UTF8String.fromString(lines))
+    val message = Message(UTF8String.fromString(lines), false, "")
 
     assert(message.message.toString === msh)
 
@@ -121,5 +121,31 @@ class MessageSuite extends SmolderBaseTest {
     validateSegment(0, "EVN", 2)
     validateSegment(1, "PID", 11)
     validateSegment(2, "PV1", 44)
+  }
+
+  test("can inclue message in the Segment column") {
+    
+    var includeMSHInSeg = true
+    val delim: Byte = 0x0d
+
+    val file = testFile("single_record.hl7")
+    val lines = Source.fromFile(file).getLines().mkString(delim.toChar.toString)
+
+    val message = Message(UTF8String.fromString(lines), includeMSHInSeg, "")
+
+    assert(message.message.toString === "MSH included in Segments Column")
+
+    val segments = message.segments
+    assert(segments.size === 4)
+
+    def validateSegment(idx: Int, id: String, size: Int) {
+      assert(segments(idx).id.toString === id)
+      assert(segments(idx).fields.size === size)
+    }
+
+    validateSegment(0, "MSH", 11)
+    validateSegment(1, "EVN", 2)
+    validateSegment(2, "PID", 11)
+    validateSegment(3, "PV1", 44)
   }
 }

@@ -23,45 +23,66 @@ import scala.collection.JavaConversions._
 
 private[smolder] object Message {
 
-  /**
-   * @return The Spark SQL schema for an HL7 message.
-   */
-  def schema: StructType = StructType(
-        Seq(
-          StructField("message", StringType),
-          StructField("segments",
-            ArrayType(
-              StructType(
-                Seq(
-                  StructField("id", StringType),
-                  StructField("fields", ArrayType(StringType, false))
-                )
-              ), false)
-            )
-          )
-        )
-
-  /**
-    * Parses HL7 messages from an iterator over strings.
-    * 
-    * @param lines An iterator containing all the lines from an HL7 message.
-    * @return Parses the message into a Message case class.
+  /** @return
+    *   The Spark SQL schema for an HL7 message.
     */
-  def apply(lines: Iterator[String]): Message = {
-    require(lines.hasNext, "Received empty message.")
+  def schema: StructType = StructType(
+    Seq(
+      StructField("message", StringType),
+      StructField(
+        "segments",
+        ArrayType(
+          StructType(
+            Seq(
+              StructField("id", StringType),
+              StructField("fields", ArrayType(StringType, false))
+            )
+          ),
+          false
+        )
+      ),
+      StructField("raw_file_path", StringType)
+    )
+  )
 
-    Message(UTF8String.fromString(lines.next),
-            lines.toSeq
-              .map(Segment(_)))
+  /** Parses HL7 messages from an iterator over strings.
+    *
+    * @param lines
+    *   An iterator containing all the lines from an HL7 message.
+    * @return
+    *   Parses the message into a Message case class.
+    */
+  def apply(
+      lines: Iterator[String],
+      includeMSHInSegments: Boolean = false,
+      rawPath: String
+  ): Message = {
+    require(lines.hasNext, "Received empty message.")
+    if (includeMSHInSegments) {
+      Message(
+        UTF8String.fromString("MSH included in Segments Column"),
+        lines.toSeq
+          .map(Segment(_)),
+        UTF8String.fromString(rawPath)
+      )
+    } else {
+      Message(
+        UTF8String.fromString(lines.next),
+        lines.toSeq
+          .map(Segment(_)),
+        UTF8String.fromString(rawPath)
+      )
+    }
   }
 
-  /**
-    * Parses HL7 messages from a string.
+  /** Parses HL7 messages from a string.
     *
     * Returns a null if the input is null.
-    * 
-    * @param text A string to parse.
-    * @return Parses the message into a Message case class.
+    *
+    * @param text
+    *   A string to parse.
+    * @return
+    *   Parses the message into a Message case class.
     */
   def apply(text: UTF8String): Message = {
 
@@ -73,54 +94,108 @@ private[smolder] object Message {
       val textString = text.toString
       require(textString.nonEmpty, "Received empty string.")
 
-      Message(textString.split(delim.toChar).toIterator)
+      Message(
+        textString.split(delim.toChar).toIterator,
+        false,
+        ""
+      )
+    }
+  }
+
+  /** Parses HL7 messages from a string.
+    *
+    * Returns a null if the input is null.
+    *
+    * @param text
+    *   A string to parse.
+    * @param includeMSHInSegments
+    *   tell the parser to allow the MSH to be included in the segments so that
+    *   they can be queried like anything else.
+    * @return
+    *   Parses the message into a Message case class.
+    */
+  def apply(
+      text: UTF8String,
+      includeMSHInSegments: Boolean,
+      rawPath: String
+  ): Message = {
+
+    val delim: Byte = 0x0d
+
+    if (text == null) {
+      null
+    } else {
+      val textString = text.toString
+      require(textString.nonEmpty, "Received empty string.")
+
+      Message(
+        textString.split(delim.toChar).toIterator,
+        includeMSHInSegments,
+        ""
+      )
     }
   }
 }
 
-/**
-  * Convenience class for parsing HL7 messages into Spark SQL Rows.
-  * 
-  * @param message The message segment header text.
-  * @param segments The segments contained within this message.
+/** Convenience class for parsing HL7 messages into Spark SQL Rows.
+  *
+  * @param message
+  *   The message segment header text.
+  * @param segments
+  *   The segments contained within this message.
+  * @param raw_file_path
+  *   The raw file path for the original hl7 message
   */
-private[smolder] case class Message(message: UTF8String,
-  segments: Seq[Segment]) {
+private[smolder] case class Message(
+    message: UTF8String,
+    segments: Seq[Segment],
+    raw_file_path: UTF8String
+) {
 
-  /**
-   * Returns a message as a row, with all possible fields included.
-   * 
-   * @return Converts into a Spark SQL InternalRow.
-   */
+  /** Returns a message as a row, with all possible fields included.
+    *
+    * @return
+    *   Converts into a Spark SQL InternalRow.
+    */
   def toInternalRow(): InternalRow = {
     toInternalRow(Message.schema)
   }
 
-  /**
-   * Returns a message as a row, possibly with some fields projected away.
-   *  
-   * @param requiredSchema The schema to project.
-   * @return Converts into a Spark SQL InternalRow.
-   */
+  /** Returns a message as a row, possibly with some fields projected away.
+    *
+    * @param requiredSchema
+    *   The schema to project.
+    * @return
+    *   Converts into a Spark SQL InternalRow.
+    */
   def toInternalRow(requiredSchema: StructType): InternalRow = {
     def makeSegments: ArrayData = {
-      ArrayData.toArrayData(segments.map(s => {
-        s.toInternalRow(requiredSchema("segments")
-          .dataType
-          .asInstanceOf[ArrayType]
-          .elementType
-          .asInstanceOf[StructType])
-      }).toArray)
+      ArrayData.toArrayData(
+        segments
+          .map(s => {
+            s.toInternalRow(
+              requiredSchema("segments").dataType
+                .asInstanceOf[ArrayType]
+                .elementType
+                .asInstanceOf[StructType]
+            )
+          })
+          .toArray
+      )
     }
     val fieldNames = requiredSchema.fieldNames
-    val messageFields = (fieldNames.contains("message"), fieldNames.contains("segments"))
+    val messageFields = (
+      fieldNames.contains("message"),
+      fieldNames.contains("segments"),
+      fieldNames.contains("raw_file_path")
+    )
 
     messageFields match {
-      case (true, true) => InternalRow(message, makeSegments)
-      case (true, false) => InternalRow(message)
-      case (false, true) => InternalRow(makeSegments)
-      case (_, _) => InternalRow()
+      case (true, true, true) =>
+        InternalRow(message, makeSegments, raw_file_path)
+      case (true, false, false) => InternalRow(message)
+      case (false, true, false) => InternalRow(makeSegments)
+      case (_, _, _)            => InternalRow()
     }
   }
 }
-
