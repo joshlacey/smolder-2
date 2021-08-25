@@ -46,57 +46,41 @@ class MessageSuite extends SmolderBaseTest {
 
   test("cannot parse an empty iterator") {
     intercept[IllegalArgumentException] {
-      Message(Iterator(), false, "")
+      Message(Iterator(), "", "")
     }
   }
 
   test("cannot parse an empty string") {
     intercept[IllegalArgumentException] {
-      Message(UTF8String.fromString(""), false, "")
+      Message(UTF8String.fromString(""), "", "")
     }
   }
 
   test("passing a null string returns a null message") {
     val nullMessage: UTF8String = null
-    assert(Message(nullMessage, false, "") === null)
-  }
-
-  test("parse only a message header, by iterator") {
-
-    val message = Message(Iterator(msh), false, "")
-
-    assert(message.message.toString === msh)
-    assert(message.segments.isEmpty)
-  }
-
-  test("parse only a message header, by string") {
-
-    val message = Message(UTF8String.fromString(msh), false, "")
-
-    assert(message.message.toString === msh)
-    assert(message.segments.isEmpty)
+    assert(Message(nullMessage, "", "") === null)
   }
 
   test("parse a full message, by iterator") {
-
+    val delim: Byte = 0x0d
     val file = testFile("single_record.hl7")
-    val lines = Source.fromFile(file).getLines()
-
-    val message = Message(lines, false, "")
-
-    assert(message.message.toString === msh)
+    val lines: String = Source.fromFile(file).getLines().mkString(delim.toChar.toString)
+    val message = Message(UTF8String.fromString(lines), "", lines)
+    val msg: String = message.message.toString()
+    assert(msg === lines)
 
     val segments = message.segments
-    assert(segments.size === 3)
+    assert(segments.size === 4)
 
     def validateSegment(idx: Int, id: String, size: Int) {
       assert(segments(idx).id.toString === id)
       assert(segments(idx).fields.size === size)
     }
 
-    validateSegment(0, "EVN", 2)
-    validateSegment(1, "PID", 11)
-    validateSegment(2, "PV1", 44)
+    validateSegment(0, "MSH", 11)
+    validateSegment(1, "EVN", 2)
+    validateSegment(2, "PID", 11)
+    validateSegment(3, "PV1", 44)
   }
 
   test("parse a full message, by string") {
@@ -104,36 +88,34 @@ class MessageSuite extends SmolderBaseTest {
     val delim: Byte = 0x0d
 
     val file = testFile("single_record.hl7")
-    val lines = Source.fromFile(file).getLines().mkString(delim.toChar.toString)
-
-    val message = Message(UTF8String.fromString(lines), false, "")
-
-    assert(message.message.toString === msh)
+    val lines: String = Source.fromFile(file).getLines().mkString(delim.toChar.toString)
+    val message = Message(UTF8String.fromString(lines), "", lines)
+    val msg: String = message.message.toString()
+    assert(msg === lines)
 
     val segments = message.segments
-    assert(segments.size === 3)
+    assert(segments.size === 4)
 
     def validateSegment(idx: Int, id: String, size: Int) {
       assert(segments(idx).id.toString === id)
       assert(segments(idx).fields.size === size)
     }
 
-    validateSegment(0, "EVN", 2)
-    validateSegment(1, "PID", 11)
-    validateSegment(2, "PV1", 44)
+    validateSegment(0, "MSH", 11)
+    validateSegment(1, "EVN", 2)
+    validateSegment(2, "PID", 11)
+    validateSegment(3, "PV1", 44)
   }
 
-  test("can inclue message in the Segment column") {
+  test("can inclue message in the Segment column 126") {
     
-    var includeMSHInSeg = true
-    val delim: Byte = 0x0d
+    val delim: Byte = 0x0d // \r
 
     val file = testFile("single_record.hl7")
-    val lines = Source.fromFile(file).getLines().mkString(delim.toChar.toString)
-
-    val message = Message(UTF8String.fromString(lines), includeMSHInSeg, "")
-
-    assert(message.message.toString === "MSH included in Segments Column")
+    val lines: String = Source.fromFile(file).getLines().mkString(delim.toChar.toString)
+    val message = Message(UTF8String.fromString(lines), "", lines)
+    val msg: String = message.message.toString()
+    assert(msg === lines)
 
     val segments = message.segments
     assert(segments.size === 4)

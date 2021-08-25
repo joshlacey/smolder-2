@@ -35,10 +35,10 @@ class functionsSuite extends SmolderBaseTest {
     val hl7Df = cleanDF.select(parse_hl7_message(cleanDF("clean")).alias("hl7"))
 
     assert(hl7Df.count() === 1)
-    assert(hl7Df.selectExpr("explode(hl7.segments)").count() === 3)
+    assert(hl7Df.selectExpr("explode(hl7.segments)").count() === 4)
     assert(hl7Df.selectExpr("explode(hl7.segments) as segments")
       .selectExpr("explode(segments.fields)")
-      .count() === 57)
+      .count() === 68)
   }
 
   test("use the segment field function to extract the event type") {

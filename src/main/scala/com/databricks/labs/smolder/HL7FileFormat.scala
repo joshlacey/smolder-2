@@ -75,19 +75,16 @@ class HL7FileFormat extends FileFormat with DataSourceRegister {
     partitionedFile => {
       val path = new Path(partitionedFile.filePath)
       val hadoopFs = path.getFileSystem(serializableConf.value)
-
+      val delim: Byte = 0x0d // \r
       // open file, read fully, and close
       // if you don't close the handle, you will get timeouts on various cloud stores (e.g., s3)
       val is = hadoopFs.open(path)
-      val lines = Source.fromInputStream(is).getLines().toArray
+      val lines = Source.fromInputStream(is).getLines()
+      val linesArray = lines.toArray
+      val hl7String = lines.mkString(delim.toChar.toString)
       is.close()
-      if(options.contains("IncludeMSHInSegments")) {
-        HL7Iterator(lines.toIterator, requiredSchema, true, partitionedFile.filePath)
-      } else {
         // create HL7 iterator to parse message and return rows
-        HL7Iterator(lines.toIterator, requiredSchema, false, partitionedFile.filePath)
-      }
-      
+      HL7Iterator(linesArray.toIterator, requiredSchema, partitionedFile.filePath, hl7String)
     }
   }
 }
@@ -95,14 +92,14 @@ class HL7FileFormat extends FileFormat with DataSourceRegister {
 private case class HL7Iterator(
   lines: Iterator[String],
   requiredSchema: StructType,
-  includeMSHInSegments: Boolean,
-  rawPath: String)
+  rawPath: String,
+  hl7String: String)
     extends Iterator[InternalRow] {
 
   var accessed = false
 
   // parse the rows in this file entirely
-  val ir = Message(lines, includeMSHInSegments, rawPath).toInternalRow(requiredSchema)
+  val ir = Message(lines, rawPath, hl7String).toInternalRow(requiredSchema)
 
   override def hasNext: Boolean = {
     !accessed

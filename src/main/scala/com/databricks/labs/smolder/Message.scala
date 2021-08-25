@@ -54,25 +54,16 @@ private[smolder] object Message {
     */
   def apply(
       lines: Iterator[String],
-      includeMSHInSegments: Boolean = false,
-      rawPath: String
+      rawPath: String,
+      hl7String: String,
   ): Message = {
     require(lines.hasNext, "Received empty message.")
-    if (includeMSHInSegments) {
       Message(
-        UTF8String.fromString("MSH included in Segments Column"),
+        UTF8String.fromString(hl7String),
         lines.toSeq
           .map(Segment(_)),
         UTF8String.fromString(rawPath)
       )
-    } else {
-      Message(
-        UTF8String.fromString(lines.next),
-        lines.toSeq
-          .map(Segment(_)),
-        UTF8String.fromString(rawPath)
-      )
-    }
   }
 
   /** Parses HL7 messages from a string.
@@ -96,7 +87,7 @@ private[smolder] object Message {
 
       Message(
         textString.split(delim.toChar).toIterator,
-        false,
+        "",
         ""
       )
     }
@@ -108,16 +99,13 @@ private[smolder] object Message {
     *
     * @param text
     *   A string to parse.
-    * @param includeMSHInSegments
-    *   tell the parser to allow the MSH to be included in the segments so that
-    *   they can be queried like anything else.
     * @return
     *   Parses the message into a Message case class.
     */
   def apply(
       text: UTF8String,
-      includeMSHInSegments: Boolean,
-      rawPath: String
+      rawPath: String,
+      hl7String: String
   ): Message = {
 
     val delim: Byte = 0x0d
@@ -130,8 +118,8 @@ private[smolder] object Message {
 
       Message(
         textString.split(delim.toChar).toIterator,
-        includeMSHInSegments,
-        ""
+        rawPath,
+        hl7String
       )
     }
   }
